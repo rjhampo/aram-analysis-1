@@ -223,9 +223,9 @@ class GameMode(Base):
     __tablename__ = "gamemode"
 
     queueId: Mapped[int] = mapped_column(primary_key = True)
-    mapName: Mapped[str]
-    mapId: Mapped[int] = mapped_column(ForeignKey("map.mapId"))
-    description: Mapped[str]
+    mapName: Mapped[str | None]
+    mapId: Mapped[int | None] = mapped_column(ForeignKey("map.mapId"))
+    description: Mapped[str | None]
 
 class Champion(Base):
     __tablename__ = "champion"
@@ -233,28 +233,28 @@ class Champion(Base):
 
     championId: Mapped[int] = mapped_column(primary_key = True)
     championName: Mapped[str]
-    info = mapped_column(JSON)
-    tags = mapped_column(ARRAY(String))
-    hp = mapped_column(DECIMAL(scale=default_scale))
-    hpperlevel = mapped_column(DECIMAL(scale=default_scale))
-    mp = mapped_column(DECIMAL(scale=default_scale))
-    mpperlevel = mapped_column(DECIMAL(scale=default_scale))
-    movespeed = mapped_column(DECIMAL(scale=default_scale))
-    armor = mapped_column(DECIMAL(scale=default_scale))
-    armorperlevel = mapped_column(DECIMAL(scale=default_scale))
-    spellblock = mapped_column(DECIMAL(scale=default_scale))
-    spellblockperlevel = mapped_column(DECIMAL(scale=default_scale))
-    attackrange = mapped_column(DECIMAL(scale=default_scale))
-    hpregen = mapped_column(DECIMAL(scale=default_scale))
-    hpregenperlevel = mapped_column(DECIMAL(scale=default_scale))
-    mpregen = mapped_column(DECIMAL(scale=default_scale))
-    mpregenperlevel = mapped_column(DECIMAL(scale=default_scale))
-    crit = mapped_column(DECIMAL(scale=default_scale))
-    critperlevel = mapped_column(DECIMAL(scale=default_scale))
-    attackdamage = mapped_column(DECIMAL(scale=default_scale))
-    attackdamageperlevel = mapped_column(DECIMAL(scale=default_scale))
-    attackspeedperlevel = mapped_column(DECIMAL(scale=default_scale))
-    attackspeed = mapped_column(DECIMAL(scale=default_scale))
+    info = mapped_column(JSON, nullable = True)
+    tags = mapped_column(ARRAY(String), nullable = True)
+    hp = mapped_column(DECIMAL(scale=default_scale), nullable = True)
+    hpperlevel = mapped_column(DECIMAL(scale=default_scale), nullable = True)
+    mp = mapped_column(DECIMAL(scale=default_scale), nullable = True)
+    mpperlevel = mapped_column(DECIMAL(scale=default_scale), nullable = True)
+    movespeed = mapped_column(DECIMAL(scale=default_scale), nullable = True)
+    armor = mapped_column(DECIMAL(scale=default_scale), nullable = True)
+    armorperlevel = mapped_column(DECIMAL(scale=default_scale), nullable = True)
+    spellblock = mapped_column(DECIMAL(scale=default_scale), nullable = True)
+    spellblockperlevel = mapped_column(DECIMAL(scale=default_scale), nullable = True)
+    attackrange = mapped_column(DECIMAL(scale=default_scale), nullable = True)
+    hpregen = mapped_column(DECIMAL(scale=default_scale), nullable = True)
+    hpregenperlevel = mapped_column(DECIMAL(scale=default_scale), nullable = True)
+    mpregen = mapped_column(DECIMAL(scale=default_scale), nullable = True)
+    mpregenperlevel = mapped_column(DECIMAL(scale=default_scale), nullable = True)
+    crit = mapped_column(DECIMAL(scale=default_scale), nullable = True)
+    critperlevel = mapped_column(DECIMAL(scale=default_scale), nullable = True)
+    attackdamage = mapped_column(DECIMAL(scale=default_scale), nullable = True)
+    attackdamageperlevel = mapped_column(DECIMAL(scale=default_scale), nullable = True)
+    attackspeedperlevel = mapped_column(DECIMAL(scale=default_scale), nullable = True)
+    attackspeed = mapped_column(DECIMAL(scale=default_scale), nullable = True)
 
 class ShopItem(Base):
     __tablename__ = "shopitem"
@@ -264,19 +264,18 @@ class ShopItem(Base):
     basegold: Mapped[int]
     totalgold: Mapped[int]
     sellgold: Mapped[int]
-    buildfrom = mapped_column(ARRAY(INTEGER))
-    buildinto = mapped_column(ARRAY(INTEGER))
-    tags = mapped_column(ARRAY(String))
-    depth: Mapped[int]
-    effect = mapped_column(JSON)
-    stats = mapped_column(JSON)
-    description: Mapped[str]
+    buildfrom = mapped_column(ARRAY(INTEGER), nullable = True)
+    buildinto = mapped_column(ARRAY(INTEGER), nullable = True)
+    tags = mapped_column(ARRAY(String), nullable = True)
+    depth: Mapped[int | None]
+    effect = mapped_column(JSON, nullable = True)
+    stats = mapped_column(JSON, nullable = True)
+    description: Mapped[str | None]
 
 class Spell(Base):
     __tablename__ = "spell"
 
-    spellRowId: Mapped[int] = mapped_column(autoincrement = "auto")
     championId = mapped_column(ForeignKey("champion.championId"))
-    spellId: Mapped[int]
-    spellName: Mapped[str] = mapped_column(primary_key = True)
+    spellId: Mapped[int] = mapped_column(primary_key = True)
+    spellName: Mapped[str]
     spellDesc: Mapped[str]

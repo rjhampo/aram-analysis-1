@@ -1,7 +1,5 @@
 import json, sqlalchemy as core, sqlalchemy.orm as orm, os, dotenv
-from tkinter import INSERT
 import current_model
-import numpy
 
 dotenv.load_dotenv("C:/datanalytics/loldata/.env")
 source_dir = os.environ.get("CONSTANT_SOURCE_DIR")
@@ -50,6 +48,7 @@ def insert_item_data():
                          'buildfrom': item.get('from'), 'buildinto': item.get('into'), 'tags': item.get('tags'),
                          'depth': item.get('depth'), 'effect': item.get('effect'), 'stats': item.get('stats'),
                          'description': item.get('description')} for key, item in inp_json['data'].items()]
+        insert_array.append({'itemId': 0, 'name': 'None', 'basegold':0, 'totalgold': 0, 'sellgold': 0}) # Dummy item
         with session_fact.begin() as session:
             session.execute(core.insert(current_model.ShopItem), insert_array)
 
@@ -81,6 +80,3 @@ def remove_fundamental_data():
         session.execute(core.delete(current_model.ShopItem))
         session.execute(core.delete(current_model.GameMode))
         session.execute(core.delete(current_model.Map))
-
-add_fundamental_data() # There's an error were auto increment not working for spells
-# remove_fundamental_data()

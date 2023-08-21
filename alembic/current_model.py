@@ -1,4 +1,4 @@
-from sqlalchemy import ForeignKey, sql
+from sqlalchemy import ForeignKey
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.types import JSON, ARRAY, String, INTEGER, DECIMAL
 from datetime import datetime
@@ -59,7 +59,7 @@ class Participant(Base):
     item4: Mapped[int | None] = mapped_column(ForeignKey("shopitem.itemId"))
     item5: Mapped[int | None] = mapped_column(ForeignKey("shopitem.itemId"))
     item6: Mapped[int | None] = mapped_column(ForeignKey("shopitem.itemId"))
-    teamPosition: Mapped[str]
+    teamPosition: Mapped[str | None]
     role: Mapped[str]
     lane: Mapped[str]
     kills: Mapped[int]
@@ -156,13 +156,13 @@ class ParticipantSpellCast(Base):
     __tablename__ = "spellcast"
 
     puuidTeamId = mapped_column(ForeignKey("participant.puuidTeamId"), primary_key = True)
-    spell1Id: Mapped[int]
+    spell1Id: Mapped[int] = mapped_column(ForeignKey('spell.spellId'))
     spell1Casts: Mapped[int]
-    spell2Id: Mapped[int]
+    spell2Id: Mapped[int] = mapped_column(ForeignKey('spell.spellId'))
     spell2Casts: Mapped[int]
-    spell3Id: Mapped[int]
+    spell3Id: Mapped[int] = mapped_column(ForeignKey('spell.spellId'))
     spell3Casts: Mapped[int]
-    spell4Id: Mapped[int]
+    spell4Id: Mapped[int] = mapped_column(ForeignKey('spell.spellId'))
     spell4Casts: Mapped[int]
     summoner1Casts: Mapped[int]
     summoner1Id: Mapped[int]

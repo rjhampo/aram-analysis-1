@@ -4,6 +4,7 @@ import sqlalchemy.ext.asyncio as sqlaio
 from sqlalchemy import PrimaryKeyConstraint
 from sqlalchemy.dialects.postgresql import insert
 from datetime import datetime
+import pickle
 
 dotenv.load_dotenv()
 
@@ -15,7 +16,7 @@ headers = {
     "X-Riot-Token": os.environ.get('RIOT_API_KEY')
 }
 
-patch_date_range = {'start':arrow.get(2023, 8, 3, 0,0,0).int_timestamp, 'end':arrow.get(2023, 8, 16, 0,0,0).int_timestamp} # Patch 13.15
+patch_date_range = {'start':arrow.get(2023, 8, 3, 0, 0, 0).int_timestamp, 'end':arrow.get(2023, 9, 12, 0, 0, 0).int_timestamp} # Patch 13.15 to 13.17
 
 lcd_rs = digitalio.DigitalInOut(board.D22)
 lcd_en = digitalio.DigitalInOut(board.D17)
@@ -34,15 +35,36 @@ class AsyncDataExtract:
         self.data_counter = 0
         self.num_dp = num_dp
         self.patch_date = patch_date
-        self.seed_players = [seed]
-        self.done_players = set()
-        self.done_matches = set()
+        if 'dump_seed.p' in os.listdir():
+            print('Derived seed_players from file')
+            with open('dump_seed.p', mode='rb') as in_file:
+                self.seed_players = pickle.load(in_file)
+        else: self.seed_players = [seed]
+        if 'dump_donep.p' in os.listdir():
+            print('Derived done_players from file')
+            with open('dump_donep.p', mode='rb') as in_file:
+                self.done_players = pickle.load(in_file)
+        else: self.done_players = set()
+        if 'dump_donem.p' in os.listdir():
+            print('Derived done_matches from file')
+            with open('dump_donem.p', mode='rb') as in_file:
+                self.done_matches = pickle.load(in_file)
+        else: self.done_matches = set()
         self.run_duration = 0
         self.start_time = None
 
     def no_connection_warning(self, err):
         print(err)
-        lcd.message = f"! C:{self.data_counter}\nDUR:{self.run_duration}"
+        lcd.clear()
+        lcd.message = f"! C:{self.data_counter}\nD:{self.run_duration:.0f}"
+
+    def write_save(self):
+        with open('dump_seed.p', mode='wb') as out_file:
+            pickle.dump(self.seed_players, out_file)
+        with open('dump_donep.p', mode='wb') as out_file:
+            pickle.dump(self.done_players, out_file)
+        with open('dump_donem.p', mode='wb') as out_file:
+            pickle.dump(self.done_matches, out_file)
 
     def process_match(self, match_response):
         data = match_response['info']
@@ -71,15 +93,15 @@ class AsyncDataExtract:
         processed_response['flexPerk'] = participant_response['perks']['statPerks']['flex']
         processed_response['offensePerk'] = participant_response['perks']['statPerks']['offense']
         processed_response['primaryStylePerk'] = participant_response['perks']['styles'][0]
-        processed_response['secondaryStylePerk'] = participant_response['perks']['styles'][1]
+        processed_response['secondaryStylePerk'] = participant_response['perks']['styles'][1] # aiohttp.ClientConnectorError, aiohttp.ClientOSError, aiohttp.ClientResponseError, aiohttp.ClientConnectionError
         return processed_response
 
-    async def get_matches(self, seed_player, client):
-        async for attempt in tenacity.AsyncRetrying(wait=tenacity.wait_fixed(10), retry=tenacity.retry_if_exception_type((aiohttp.ClientConnectorError, aiohttp.ClientOSError, aiohttp.ClientResponseError)), after=self.no_connection_warning):
+    async def get_matches(self, seed_player, client, start_index):
+        async for attempt in tenacity.AsyncRetrying(wait=tenacity.wait_fixed(10), after=self.no_connection_warning):
             with attempt:
                 async with self.limiter:
-                    response = await client.get(f'https://sea.api.riotgames.com/lol/match/v5/matches/by-puuid/{seed_player}/ids?startTime={self.patch_date["start"]}&endTime={self.patch_date["end"]}&queue=450&start=0&count=100')
-                    response_json = await response.json()
+                    async with client.get(f'https://sea.api.riotgames.com/lol/match/v5/matches/by-puuid/{seed_player}/ids?startTime={self.patch_date["start"]}&endTime={self.patch_date["end"]}&queue=450&start={start_index}&count=100') as response:
+                        response_json = await response.json()
                 if ('status' in response_json) and (response_json['status']['status_code'] == 429):
                     raise aiohttp.ClientResponseError(request_info=response.request_info, history=response.history, status=429)
             if not attempt.retry_state.outcome.failed:
@@ -87,11 +109,11 @@ class AsyncDataExtract:
         return response_json
 
     async def get_match(self, seed_match, client):
-        async for attempt in tenacity.AsyncRetrying(wait=tenacity.wait_fixed(10), retry=tenacity.retry_if_exception_type((aiohttp.ClientConnectorError, aiohttp.ClientOSError, aiohttp.ClientResponseError)), after=self.no_connection_warning):
+        async for attempt in tenacity.AsyncRetrying(wait=tenacity.wait_fixed(10), after=self.no_connection_warning):
             with attempt:
                 async with self.limiter:
-                    response = await client.get(f'https://sea.api.riotgames.com/lol/match/v5/matches/{seed_match}')
-                    response_json = await response.json()
+                    async with client.get(f'https://sea.api.riotgames.com/lol/match/v5/matches/{seed_match}') as response:
+                        response_json = await response.json()
                 if ('status' in response_json) and (response_json['status']['status_code'] == 429):
                     raise aiohttp.ClientResponseError(request_info=response.request_info, history=response.history, status=429)
             if not attempt.retry_state.outcome.failed:
@@ -104,6 +126,7 @@ class AsyncDataExtract:
             await session.commit()
 
     async def gather_matches(self):
+        multiplier = 1
         participant_tables = [current_model.ParticipantCombat, current_model.ParticipantObjective,
                         current_model.ParticipantVision, current_model.ParticipantSupport, current_model.ParticipantSpellCast,
                         current_model.ParticipantEquipPerk, current_model.ParticipantShopTX]
@@ -114,53 +137,62 @@ class AsyncDataExtract:
             while self.data_counter < self.num_dp:
                 seed_player = random.choice(self.seed_players)
                 self.seed_players.remove(seed_player)
-                # if seed_player not in self.done_players:
-                matchlist_response = await self.get_matches(seed_player, client)
-                self.done_players.add(seed_player)
+                if seed_player not in self.done_players:
+                    matchlist_tasks = [self.get_matches(seed_player, client, start_index) for start_index in [0, 100, 200]]
+                    matchlist_response = await asyncio.gather(*matchlist_tasks)
+                    matchlist_response = [match for task_out in matchlist_response for match in task_out]
+
+                    self.done_players.add(seed_player)
                     
-                if not matchlist_response: continue
-                match_tasks = [self.get_match(seed_match, client) for seed_match in matchlist_response if seed_match not in self.done_matches]
-                if not match_tasks: continue
-                matches_json = await asyncio.gather(*match_tasks)
+                    if not matchlist_response: continue
+                    match_tasks = [self.get_match(seed_match, client) for seed_match in matchlist_response if seed_match not in self.done_matches]
+                    if not match_tasks: continue
+                    matches_json = await asyncio.gather(*match_tasks)
 
-                for seed_match_json in matches_json:
-                    if 'metadata' in seed_match_json:    # Makes sure no invalid responses get processed
-                        for participant in seed_match_json['metadata']['participants']:
-                            if (participant not in self.done_players) and (participant not in self.seed_players):
-                                self.seed_players.append(participant)
-                        match_input = self.process_match(seed_match_json)
-                        await self.write_to_db(current_model.Match, match_input)
-                        team_input = []
-                        for i, team in enumerate(seed_match_json['info']['teams']):
-                            sample_participant = seed_match_json['info']['participants'][i*5]
-                            team_input.append(self.process_team(seed_match_json, team, sample_participant))
-                        await self.write_to_db(current_model.Team, team_input)
-                        participant_input = []
-                        for i, participant in enumerate(seed_match_json['info']['participants']):
-                            participant_input.append(self.process_participant(seed_match_json, seed_match_json['info']['teams'][(i//5) % 2], participant))
-                        async with self.session() as session:
-                            await session.execute(insert(current_model.Participant).on_conflict_do_nothing(), participant_input)
-                            await session.commit()
-                        participant_write_tasks = [self.write_to_db(table, participant_input) for table in participant_tables]
-                        await asyncio.gather(*participant_write_tasks)
-                        
-                        self.done_matches.add(seed_match_json['metadata']['matchId'])
+                    for seed_match_json in matches_json:
+                        if 'metadata' in seed_match_json:    # Makes sure no invalid responses get processed
+                            for participant in seed_match_json['metadata']['participants']:
+                                if participant not in self.done_players:
+                                    self.seed_players.append(participant)
+                            match_input = self.process_match(seed_match_json)
+                            await self.write_to_db(current_model.Match, match_input)
+                            team_input = []
+                            for i, team in enumerate(seed_match_json['info']['teams']):
+                                sample_participant = seed_match_json['info']['participants'][i*5]
+                                team_input.append(self.process_team(seed_match_json, team, sample_participant))
+                            await self.write_to_db(current_model.Team, team_input)
+                            participant_input = []
+                            for i, participant in enumerate(seed_match_json['info']['participants']):
+                                participant_input.append(self.process_participant(seed_match_json, seed_match_json['info']['teams'][(i//5) % 2], participant))
+                            async with self.session() as session:
+                                await session.execute(insert(current_model.Participant).on_conflict_do_nothing(), participant_input)
+                                await session.commit()
+                            participant_write_tasks = [self.write_to_db(table, participant_input) for table in participant_tables]
+                            await asyncio.gather(*participant_write_tasks)
+                            
+                            self.done_matches.add(seed_match_json['metadata']['matchId'])
 
-                    self.data_counter = len(self.done_matches)
-                    self.run_duration = (datetime.now() - self.start_time).total_seconds()
-                    mem_list = subprocess.run('free', capture_output=True, text=True).stdout.split()
-                    mem_usage = (int(mem_list[8])/int(mem_list[7]))*100
-                    lcd.clear()
-                    lcd.message = f"C:{self.data_counter} M:{mem_usage:.0f}%\nD:{self.run_duration:.0f}"
+                self.data_counter = len(self.done_matches)
+                self.run_duration = (datetime.now() - self.start_time).total_seconds()
+                if self.data_counter > (10000 * multiplier):
+                    multiplier += 1
+                    print(self.data_counter)
+                    self.write_save()
+                mem_list = subprocess.run('free', capture_output=True, text=True).stdout.split()
+                mem_usage = (int(mem_list[8])/int(mem_list[7]))*100
 
-async_engine = sqlaio.create_async_engine(os.environ.get('SERVER_URL'), echo = True)
+                lcd.clear()
+                lcd.message = f"C:{self.data_counter} M:{mem_usage:.0f}%\nD:{self.run_duration:.0f}"
 
-extractor = AsyncDataExtract(headers=headers, seed='nyJFMam4RF-ZUtMbQ3_SBpyAqfbTWOHGfqqBzu3YeaJDpIjkQ4g9t_HtUVslrqBfrkVZsuYVi0vcvw',
+async_engine = sqlaio.create_async_engine(os.environ.get('SERVER_URL'))
+
+extractor = AsyncDataExtract(headers=headers, seed='E4SDhtcCJdJKmQRLuuFbEg9R0MmvKpifxI7azikjyd7Wq7UpvQbudhzLWETBXh0uXNmpHmSV_HVjGQ',
                                num_dp=1000000, patch_date=patch_date_range, async_engine_obj=async_engine)
 
 try:
     asyncio.run(extractor.gather_matches())
 except Exception as e:
-    print(str(e))
+    print(e)
+    extractor.write_save()
     lcd.clear()
     lcd.message = "ERROR"

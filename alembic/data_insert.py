@@ -1,9 +1,10 @@
 import json, sqlalchemy as core, sqlalchemy.orm as orm, os, dotenv
+from sqlalchemy.dialects.postgresql import insert
 import current_model
 
-dotenv.load_dotenv("C:/datanalytics/loldata/.env")
+dotenv.load_dotenv()
 source_dir = os.environ.get("CONSTANT_SOURCE_DIR")
-engine = core.create_engine(os.environ.get("SERVER_URL"), echo=True)
+engine = core.create_engine(os.environ.get("SERVER_URL2"), echo=True)
 
 session_fact = orm.sessionmaker(engine)
 
@@ -12,7 +13,7 @@ def insert_map_data():
         inp_json = json.loads(inp_file.read())
         insert_array = [{'mapId': int(row['MapId']), 'mapName': row['MapName']} for row in inp_json['data'].values()]
         with session_fact.begin() as session:
-            session.execute(core.insert(current_model.Map), insert_array)
+            session.execute(insert(current_model.Map).on_conflict_do_nothing(), insert_array)
 
 def insert_queue_data():
     with open(os.path.join(source_dir, "queues.json")) as inp_file:
@@ -24,7 +25,7 @@ def insert_queue_data():
                 result = session.execute(stmt).all()
                 if not result: insert_array[i]['mapId'] = None
                 else: insert_array[i]['mapId'] = result[0][0].mapId
-            session.execute(core.insert(current_model.GameMode), insert_array)
+            session.execute(insert(current_model.GameMode).on_conflict_do_nothing(), insert_array)
 
 def insert_champ_data():
     with open(os.path.join(source_dir, "champion.json"), encoding='utf8') as inp_file:
@@ -38,7 +39,7 @@ def insert_champ_data():
         
         insert_array.append({'championId': 999, 'championName': 'Any'}) # Dummy champion
         with session_fact.begin() as session:
-            session.execute(core.insert(current_model.Champion), insert_array)
+            session.execute(insert(current_model.Champion).on_conflict_do_nothing(), insert_array)
 
 def insert_item_data():
     with open(os.path.join(source_dir, "item.json")) as inp_file:
@@ -50,7 +51,7 @@ def insert_item_data():
                          'description': item.get('description')} for key, item in inp_json['data'].items()]
         insert_array.append({'itemId': 0, 'name': 'None', 'basegold':0, 'totalgold': 0, 'sellgold': 0}) # Dummy item
         with session_fact.begin() as session:
-            session.execute(core.insert(current_model.ShopItem), insert_array)
+            session.execute(insert(current_model.ShopItem).on_conflict_do_nothing(), insert_array)
 
 def insert_spell_data():
     with open(os.path.join(source_dir, "championFull.json"), encoding='utf8') as inp_file:
@@ -64,7 +65,7 @@ def insert_spell_data():
         for i, value in enumerate(inp_json['data'].values()):
             insert_array.append({'championId': 999, 'spellId': int('999' + str(i)), 'spellName': value['name'], 'spellDesc': value['tooltip']})
     with session_fact.begin() as session:
-        session.execute(core.insert(current_model.Spell), insert_array)
+        session.execute(insert(current_model.Spell).on_conflict_do_nothing(), insert_array)
 
 def add_fundamental_data():
     insert_map_data()
